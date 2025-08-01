@@ -240,24 +240,48 @@ export default function ProjectPage() {
 
   const loadProjects = async () => {
     setLoading(true)
-    const result = await FirebaseService.getAll("projects")
-    if (result.success) {
-      setProjects(result.data)
+    try {
+      const result = await FirebaseService.getAll("projects")
+      if (result.success && result.data) {
+        setProjects(result.data)
+      } else {
+        console.error("Failed to load projects:", result.error)
+        toast({
+          title: "Error",
+          description: "Failed to load projects from database",
+          variant: "destructive",
+        })
+      }
+    } catch (error) {
+      console.error("Error loading projects:", error)
+      toast({
+        title: "Error",
+        description: "Failed to connect to database",
+        variant: "destructive",
+      })
     }
     setLoading(false)
   }
 
   const loadCustomers = async () => {
-    const result = await FirebaseService.getAll("customers")
-    if (result.success) {
-      setCustomers(result.data.map((c: any) => c.customerName))
+    try {
+      const result = await FirebaseService.getAll("customers")
+      if (result.success && result.data) {
+        setCustomers(result.data.map((c: any) => c.customerName))
+      }
+    } catch (error) {
+      console.error("Error loading customers:", error)
     }
   }
 
   const loadMaterials = async () => {
-    const result = await FirebaseService.getAll("materials")
-    if (result.success) {
-      setMaterials(result.data)
+    try {
+      const result = await FirebaseService.getAll("materials")
+      if (result.success && result.data) {
+        setMaterials(result.data)
+      }
+    } catch (error) {
+      console.error("Error loading materials:", error)
     }
   }
 
@@ -324,15 +348,30 @@ export default function ProjectPage() {
 
     setLoading(true)
     try {
-      const result = await FirebaseService.update("projects", currentProject.id!, currentProject)
+      // Add updatedAt timestamp
+      const updatedProject = {
+        ...currentProject,
+        updatedAt: new Date()
+      }
+
+      const result = await FirebaseService.update("projects", currentProject.id!, updatedProject)
       if (result.success) {
+        setCurrentProject(updatedProject)
         toast({
           title: "Success",
           description: "Project saved successfully (Ctrl + S)",
         })
-        loadProjects()
+        await loadProjects() // Refresh the list
+      } else {
+        console.error("Save failed:", result.error)
+        toast({
+          title: "Error",
+          description: result.error || "Failed to save project",
+          variant: "destructive",
+        })
       }
     } catch (error) {
+      console.error("Save error:", error)
       toast({
         title: "Error",
         description: "Failed to save project",
@@ -392,15 +431,32 @@ export default function ProjectPage() {
     }
 
     if (confirm("Are you sure you want to delete this project? (Ctrl + Shift + D)")) {
-      const result = await FirebaseService.delete("projects", currentProject.id!)
-      if (result.success) {
+      setLoading(true)
+      try {
+        const result = await FirebaseService.delete("projects", currentProject.id!)
+        if (result.success) {
+          toast({
+            title: "Success",
+            description: "Project deleted successfully",
+          })
+          setCurrentProject(null)
+          await loadProjects()
+        } else {
+          toast({
+            title: "Error",
+            description: result.error || "Failed to delete project",
+            variant: "destructive",
+          })
+        }
+      } catch (error) {
+        console.error("Delete error:", error)
         toast({
-          title: "Success",
-          description: "Project deleted successfully",
+          title: "Error",
+          description: "Failed to delete project",
+          variant: "destructive",
         })
-        setCurrentProject(null)
-        loadProjects()
       }
+      setLoading(false)
     }
   }
 
@@ -450,15 +506,25 @@ export default function ProjectPage() {
         try {
           const projectData = JSON.parse(text)
           delete projectData.id // Remove ID for new import
+          projectData.createdAt = new Date()
+          projectData.updatedAt = new Date()
+          
           const result = await FirebaseService.create("projects", projectData)
           if (result.success) {
             toast({
               title: "Import Complete",
               description: "Project imported successfully",
             })
-            loadProjects()
+            await loadProjects()
+          } else {
+            toast({
+              title: "Error",
+              description: result.error || "Failed to import project",
+              variant: "destructive",
+            })
           }
         } catch (error) {
+          console.error("Import error:", error)
           toast({
             title: "Error",
             description: "Invalid project file",
@@ -471,9 +537,10 @@ export default function ProjectPage() {
   }
 
   const createProject = async () => {
+    // Enhanced validation
     if (!newProject.projectName.trim()) {
       toast({
-        title: "Error",
+        title: "Validation Error",
         description: "Project name is required",
         variant: "destructive",
       })
@@ -482,7 +549,7 @@ export default function ProjectPage() {
 
     if (!newProject.partMaster.drawingNumber.trim()) {
       toast({
-        title: "Error",
+        title: "Validation Error",
         description: "Drawing number is required",
         variant: "destructive",
       })
@@ -491,8 +558,17 @@ export default function ProjectPage() {
 
     if (!newProject.partMaster.material.trim()) {
       toast({
-        title: "Error",
+        title: "Validation Error",
         description: "Material is required",
+        variant: "destructive",
+      })
+      return
+    }
+
+    if (!newProject.customerName.trim()) {
+      toast({
+        title: "Validation Error",
+        description: "Customer name is required",
         variant: "destructive",
       })
       return
@@ -500,12 +576,18 @@ export default function ProjectPage() {
 
     setLoading(true)
     try {
+      // Create project with proper timestamps
       const projectData: Project = {
         ...newProject,
         processes: [],
+        createdAt: new Date(),
+        updatedAt: new Date(),
       }
 
+      console.log("Creating project with data:", projectData)
+
       const result = await FirebaseService.create("projects", projectData)
+      
       if (result.success) {
         toast({
           title: "Success",
@@ -513,12 +595,20 @@ export default function ProjectPage() {
         })
         setShowNewProjectDialog(false)
         resetNewProjectForm()
-        loadProjects()
+        await loadProjects() // Refresh the list
+      } else {
+        console.error("Create project failed:", result.error)
+        toast({
+          title: "Error",
+          description: result.error || "Failed to create project",
+          variant: "destructive",
+        })
       }
     } catch (error) {
+      console.error("Create project error:", error)
       toast({
         title: "Error",
-        description: "Failed to create project",
+        description: "Failed to create project. Please check your connection.",
         variant: "destructive",
       })
     }
@@ -559,10 +649,10 @@ export default function ProjectPage() {
   }
 
   const addSize = () => {
-    if (!newSize.dimension || newSize.value <= 0) {
+    if (!newSize.dimension.trim() || newSize.value <= 0) {
       toast({
-        title: "Error",
-        description: "Please fill all size fields",
+        title: "Validation Error",
+        description: "Please fill all size fields with valid values",
         variant: "destructive",
       })
       return
@@ -572,7 +662,7 @@ export default function ProjectPage() {
       ...prev,
       partMaster: {
         ...prev.partMaster,
-        sizes: [...prev.partMaster.sizes, newSize],
+        sizes: [...prev.partMaster.sizes, { ...newSize }],
       },
     }))
 
@@ -596,7 +686,7 @@ export default function ProjectPage() {
   const addProcess = async () => {
     if (!currentProject || !newProcess.processName.trim()) {
       toast({
-        title: "Error",
+        title: "Validation Error",
         description: "Process name is required",
         variant: "destructive",
       })
@@ -605,16 +695,31 @@ export default function ProjectPage() {
 
     const process: Process = {
       ...newProcess,
-      id: Date.now().toString(),
+      id: `process_${Date.now()}`,
       operations: [],
     }
 
     const updatedProject = {
       ...currentProject,
       processes: [...currentProject.processes, process],
+      updatedAt: new Date(),
     }
 
     setCurrentProject(updatedProject)
+    
+    // Auto-save the project
+    try {
+      const result = await FirebaseService.update("projects", currentProject.id!, updatedProject)
+      if (result.success) {
+        toast({
+          title: "Success",
+          description: "Process added and saved successfully",
+        })
+      }
+    } catch (error) {
+      console.error("Error saving process:", error)
+    }
+
     setShowProcessDialog(false)
     setNewProcess({
       processName: "",
@@ -623,51 +728,71 @@ export default function ProjectPage() {
       startDate: new Date().toISOString().split("T")[0],
       endDate: "",
     })
-
-    toast({
-      title: "Success",
-      description: "Process added successfully",
-    })
   }
 
   const addOperation = async () => {
     if (!currentProject || !selectedProcess || !newOperation.operationName.trim()) {
       toast({
-        title: "Error",
+        title: "Validation Error",
         description: "Operation name and process selection are required",
         variant: "destructive",
       })
       return
     }
 
-    const operation: Operation = {
-      ...newOperation,
-      id: Date.now().toString(),
+    setLoading(true)
+    try {
+      const operation: Operation = {
+        ...newOperation,
+        id: `operation_${Date.now()}`,
+      }
+
+      const updatedProject = {
+        ...currentProject,
+        processes: currentProject.processes.map((process) =>
+          process.id === selectedProcess 
+            ? { ...process, operations: [...process.operations, operation] } 
+            : process
+        ),
+        updatedAt: new Date(),
+      }
+
+      setCurrentProject(updatedProject)
+
+      // Auto-save the project
+      const result = await FirebaseService.update("projects", currentProject.id!, updatedProject)
+      if (result.success) {
+        toast({
+          title: "Success",
+          description: "Operation added and saved successfully",
+        })
+        setShowOperationDialog(false)
+        setSelectedProcess("")
+        setNewOperation({
+          operationName: "",
+          description: "",
+          estimatedTime: 0,
+          actualTime: 0,
+          status: "Pending",
+          assignedTo: "",
+          priority: "Medium",
+        })
+      } else {
+        toast({
+          title: "Error",
+          description: result.error || "Failed to save operation",
+          variant: "destructive",
+        })
+      }
+    } catch (error) {
+      console.error("Error saving operation:", error)
+      toast({
+        title: "Error",
+        description: "Failed to add operation",
+        variant: "destructive",
+      })
     }
-
-    const updatedProject = {
-      ...currentProject,
-      processes: currentProject.processes.map((process) =>
-        process.id === selectedProcess ? { ...process, operations: [...process.operations, operation] } : process,
-      ),
-    }
-
-    setCurrentProject(updatedProject)
-    setShowOperationDialog(false)
-    setNewOperation({
-      operationName: "",
-      description: "",
-      estimatedTime: 0,
-      actualTime: 0,
-      status: "Pending",
-      assignedTo: "",
-      priority: "Medium",
-    })
-
-    toast({
-      title: "Success",
-      description: "Operation added successfully",
-    })
+    setLoading(false)
   }
 
   const getStatusColor = (status: string) => {
@@ -809,6 +934,14 @@ export default function ProjectPage() {
       </header>
 
       <div className="flex-1 space-y-4 p-4 md:p-8">
+        {/* Loading indicator */}
+        {loading && (
+          <div className="text-center py-4">
+            <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+            <p className="mt-2 text-sm text-gray-600">Processing...</p>
+          </div>
+        )}
+
         {/* Current Project Status */}
         {currentProject && (
           <Card className="bg-blue-50 border-blue-200">
@@ -846,57 +979,67 @@ export default function ProjectPage() {
                 <CardDescription>Manage all projects in the system</CardDescription>
               </CardHeader>
               <CardContent>
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Project Name</TableHead>
-                      <TableHead>Type</TableHead>
-                      <TableHead>Customer</TableHead>
-                      <TableHead>Manager</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead>Priority</TableHead>
-                      <TableHead>Actions</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {projects.map((project) => (
-                      <TableRow key={project.id}>
-                        <TableCell className="font-medium">{project.projectName}</TableCell>
-                        <TableCell>
-                          <Badge variant="outline">{project.projectType}</Badge>
-                        </TableCell>
-                        <TableCell>{project.customerName}</TableCell>
-                        <TableCell>{project.projectManager}</TableCell>
-                        <TableCell>
-                          <Badge variant={getStatusColor(project.status)}>
-                            {getStatusIcon(project.status)}
-                            <span className="ml-1">{project.status}</span>
-                          </Badge>
-                        </TableCell>
-                        <TableCell>
-                          <Badge
-                            variant={
-                              project.priority === "High"
-                                ? "destructive"
-                                : project.priority === "Low"
-                                  ? "secondary"
-                                  : "default"
-                            }
-                          >
-                            {project.priority}
-                          </Badge>
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex gap-2">
-                            <Button size="sm" variant="outline" onClick={() => handleOpenProject(project)}>
-                              <FolderOpen className="w-4 h-4" />
-                            </Button>
-                          </div>
-                        </TableCell>
+                {projects.length === 0 ? (
+                  <div className="text-center py-8">
+                    <p className="text-gray-500">No projects found. Create your first project to get started.</p>
+                    <Button onClick={() => handleNewProject("Project")} className="mt-4">
+                      <FolderPlus className="w-4 h-4 mr-2" />
+                      Create First Project
+                    </Button>
+                  </div>
+                ) : (
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Project Name</TableHead>
+                        <TableHead>Type</TableHead>
+                        <TableHead>Customer</TableHead>
+                        <TableHead>Manager</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead>Priority</TableHead>
+                        <TableHead>Actions</TableHead>
                       </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
+                    </TableHeader>
+                    <TableBody>
+                      {projects.map((project) => (
+                        <TableRow key={project.id}>
+                          <TableCell className="font-medium">{project.projectName}</TableCell>
+                          <TableCell>
+                            <Badge variant="outline">{project.projectType}</Badge>
+                          </TableCell>
+                          <TableCell>{project.customerName}</TableCell>
+                          <TableCell>{project.projectManager}</TableCell>
+                          <TableCell>
+                            <Badge variant={getStatusColor(project.status)}>
+                              {getStatusIcon(project.status)}
+                              <span className="ml-1">{project.status}</span>
+                            </Badge>
+                          </TableCell>
+                          <TableCell>
+                            <Badge
+                              variant={
+                                project.priority === "High"
+                                  ? "destructive"
+                                  : project.priority === "Low"
+                                    ? "secondary"
+                                    : "default"
+                              }
+                            >
+                              {project.priority}
+                            </Badge>
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex gap-2">
+                              <Button size="sm" variant="outline" onClick={() => handleOpenProject(project)}>
+                                <FolderOpen className="w-4 h-4" />
+                              </Button>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                )}
               </CardContent>
             </Card>
           </TabsContent>
@@ -1045,49 +1188,77 @@ export default function ProjectPage() {
                     </CardHeader>
                     <CardContent>
                       {process.operations.length > 0 ? (
-                        <Table>
-                          <TableHeader>
-                            <TableRow>
-                              <TableHead>Operation</TableHead>
-                              <TableHead>Estimated Time</TableHead>
-                              <TableHead>Actual Time</TableHead>
-                              <TableHead>Assigned To</TableHead>
-                              <TableHead>Status</TableHead>
-                              <TableHead>Priority</TableHead>
-                            </TableRow>
-                          </TableHeader>
-                          <TableBody>
-                            {process.operations.map((operation) => (
-                              <TableRow key={operation.id}>
-                                <TableCell className="font-medium">{operation.operationName}</TableCell>
-                                <TableCell>{operation.estimatedTime}h</TableCell>
-                                <TableCell>{operation.actualTime}h</TableCell>
-                                <TableCell>{operation.assignedTo}</TableCell>
-                                <TableCell>
-                                  <Badge variant={getStatusColor(operation.status)}>
-                                    {getStatusIcon(operation.status)}
-                                    <span className="ml-1">{operation.status}</span>
-                                  </Badge>
-                                </TableCell>
-                                <TableCell>
-                                  <Badge
-                                    variant={
-                                      operation.priority === "High"
-                                        ? "destructive"
-                                        : operation.priority === "Low"
-                                          ? "secondary"
-                                          : "default"
-                                    }
-                                  >
-                                    {operation.priority}
-                                  </Badge>
-                                </TableCell>
+                        <div className="space-y-4">
+                          <Table>
+                            <TableHeader>
+                              <TableRow>
+                                <TableHead>Operation</TableHead>
+                                <TableHead>Description</TableHead>
+                                <TableHead>Estimated Time</TableHead>
+                                <TableHead>Actual Time</TableHead>
+                                <TableHead>Assigned To</TableHead>
+                                <TableHead>Status</TableHead>
+                                <TableHead>Priority</TableHead>
                               </TableRow>
-                            ))}
-                          </TableBody>
-                        </Table>
+                            </TableHeader>
+                            <TableBody>
+                              {process.operations.map((operation) => (
+                                <TableRow key={operation.id}>
+                                  <TableCell className="font-medium">{operation.operationName}</TableCell>
+                                  <TableCell className="max-w-xs truncate">{operation.description}</TableCell>
+                                  <TableCell>{operation.estimatedTime}h</TableCell>
+                                  <TableCell>{operation.actualTime}h</TableCell>
+                                  <TableCell>{operation.assignedTo || "Unassigned"}</TableCell>
+                                  <TableCell>
+                                    <Badge variant={getStatusColor(operation.status)}>
+                                      {getStatusIcon(operation.status)}
+                                      <span className="ml-1">{operation.status}</span>
+                                    </Badge>
+                                  </TableCell>
+                                  <TableCell>
+                                    <Badge
+                                      variant={
+                                        operation.priority === "High"
+                                          ? "destructive"
+                                          : operation.priority === "Low"
+                                            ? "secondary"
+                                            : "default"
+                                      }
+                                    >
+                                      {operation.priority}
+                                    </Badge>
+                                  </TableCell>
+                                </TableRow>
+                              ))}
+                            </TableBody>
+                          </Table>
+                          <div className="flex justify-between items-center">
+                            <Button 
+                              size="sm" 
+                              variant="outline"
+                              onClick={() => {
+                                setSelectedProcess(process.id)
+                                setShowOperationDialog(true)
+                              }}
+                            >
+                              <Plus className="w-4 h-4 mr-2" />
+                              Add Operation to {process.processName}
+                            </Button>
+                          </div>
+                        </div>
                       ) : (
-                        <p className="text-muted-foreground">No operations added to this process yet.</p>
+                        <div className="text-center py-8">
+                          <p className="text-muted-foreground mb-4">No operations added to this process yet.</p>
+                          <Button 
+                            onClick={() => {
+                              setSelectedProcess(process.id)
+                              setShowOperationDialog(true)
+                            }}
+                          >
+                            <Plus className="w-4 h-4 mr-2" />
+                            Add First Operation
+                          </Button>
+                        </div>
                       )}
                     </CardContent>
                   </Card>
@@ -1323,7 +1494,7 @@ export default function ProjectPage() {
                 <CardContent>
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                     <div className="space-y-2">
-                      <Label htmlFor="customer">Customer</Label>
+                      <Label htmlFor="customer">Customer *</Label>
                       <div className="flex gap-2">
                         <Select
                           value={newProject.customerName}
@@ -1349,7 +1520,7 @@ export default function ProjectPage() {
                       </div>
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="projectName">Project Name</Label>
+                      <Label htmlFor="projectName">Project Name *</Label>
                       <Input
                         id="projectName"
                         value={newProject.projectName}
@@ -1464,7 +1635,7 @@ export default function ProjectPage() {
               {/* Actions */}
               <div className="flex gap-2">
                 <Button onClick={createProject} disabled={loading}>
-                  {loading ? "Creating..." : "Save"}
+                  {loading ? "Creating..." : "Create Project"}
                 </Button>
                 <Button variant="outline" onClick={resetNewProjectForm}>
                   Reset
@@ -1524,7 +1695,9 @@ export default function ProjectPage() {
                 </div>
               </div>
               <div className="flex gap-2">
-                <Button onClick={addProcess}>Add Process</Button>
+                <Button onClick={addProcess} disabled={loading}>
+                  {loading ? "Adding..." : "Add Process"}
+                </Button>
                 <Button variant="outline" onClick={() => setShowProcessDialog(false)}>
                   Cancel
                 </Button>
@@ -1535,36 +1708,59 @@ export default function ProjectPage() {
 
         {/* Add Operation Dialog */}
         <Dialog open={showOperationDialog} onOpenChange={setShowOperationDialog}>
-          <DialogContent>
+          <DialogContent className="max-w-lg">
             <DialogHeader>
               <DialogTitle>Add New Operation</DialogTitle>
               <DialogDescription>Add a new operation to a process</DialogDescription>
             </DialogHeader>
             <div className="space-y-4">
+              {/* Process Selection */}
               <div className="space-y-2">
                 <Label htmlFor="processSelect">Select Process *</Label>
-                <Select value={selectedProcess} onValueChange={setSelectedProcess}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select a process" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {currentProject?.processes.map((process) => (
-                      <SelectItem key={process.id} value={process.id}>
-                        {process.processName}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                {currentProject?.processes && currentProject.processes.length > 0 ? (
+                  <Select value={selectedProcess} onValueChange={setSelectedProcess}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select a process" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {currentProject.processes.map((process) => (
+                        <SelectItem key={process.id} value={process.id}>
+                          {process.processName}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                ) : (
+                  <div className="p-4 border rounded-lg bg-yellow-50 border-yellow-200">
+                    <p className="text-sm text-yellow-800">
+                      No processes available. Please add a process first before adding operations.
+                    </p>
+                    <Button 
+                      size="sm" 
+                      variant="outline" 
+                      className="mt-2"
+                      onClick={() => {
+                        setShowOperationDialog(false)
+                        setShowProcessDialog(true)
+                      }}
+                    >
+                      Add Process First
+                    </Button>
+                  </div>
+                )}
               </div>
+
+              {/* Operation Details */}
               <div className="space-y-2">
                 <Label htmlFor="operationName">Operation Name *</Label>
                 <Input
                   id="operationName"
                   value={newOperation.operationName}
                   onChange={(e) => setNewOperation((prev) => ({ ...prev, operationName: e.target.value }))}
-                  placeholder="Enter operation name"
+                  placeholder="Enter operation name (e.g., Machining, Assembly)"
                 />
               </div>
+
               <div className="space-y-2">
                 <Label htmlFor="operationDescription">Description</Label>
                 <Textarea
@@ -1572,8 +1768,10 @@ export default function ProjectPage() {
                   value={newOperation.description}
                   onChange={(e) => setNewOperation((prev) => ({ ...prev, description: e.target.value }))}
                   placeholder="Enter operation description"
+                  rows={3}
                 />
               </div>
+
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="estimatedTime">Estimated Time (hours)</Label>
@@ -1581,10 +1779,12 @@ export default function ProjectPage() {
                     id="estimatedTime"
                     type="number"
                     step="0.1"
+                    min="0"
                     value={newOperation.estimatedTime}
                     onChange={(e) =>
                       setNewOperation((prev) => ({ ...prev, estimatedTime: Number.parseFloat(e.target.value) || 0 }))
                     }
+                    placeholder="0.0"
                   />
                 </div>
                 <div className="space-y-2">
@@ -1597,25 +1797,72 @@ export default function ProjectPage() {
                   />
                 </div>
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="operationPriority">Priority</Label>
-                <Select
-                  value={newOperation.priority}
-                  onChange={(value) => setNewOperation((prev) => ({ ...prev, priority: value }))}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="Low">Low</SelectItem>
-                    <SelectItem value="Medium">Medium</SelectItem>
-                    <SelectItem value="High">High</SelectItem>
-                  </SelectContent>
-                </Select>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="operationStatus">Status</Label>
+                  <Select
+                    value={newOperation.status}
+                    onValueChange={(value) => setNewOperation((prev) => ({ ...prev, status: value }))}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Pending">Pending</SelectItem>
+                      <SelectItem value="In Progress">In Progress</SelectItem>
+                      <SelectItem value="Completed">Completed</SelectItem>
+                      <SelectItem value="On Hold">On Hold</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="operationPriority">Priority</Label>
+                  <Select
+                    value={newOperation.priority}
+                    onValueChange={(value) => setNewOperation((prev) => ({ ...prev, priority: value }))}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Low">Low</SelectItem>
+                      <SelectItem value="Medium">Medium</SelectItem>
+                      <SelectItem value="High">High</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
-              <div className="flex gap-2">
-                <Button onClick={addOperation}>Add Operation</Button>
-                <Button variant="outline" onClick={() => setShowOperationDialog(false)}>
+
+              {/* Preview selected process */}
+              {selectedProcess && currentProject && (
+                <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                  <p className="text-sm font-medium text-blue-800">
+                    Adding to process: {currentProject.processes.find(p => p.id === selectedProcess)?.processName}
+                  </p>
+                </div>
+              )}
+
+              <div className="flex gap-2 pt-4">
+                <Button 
+                  onClick={addOperation} 
+                  disabled={loading || !selectedProcess || !newOperation.operationName.trim()}
+                >
+                  {loading ? "Adding..." : "Add Operation"}
+                </Button>
+                <Button variant="outline" onClick={() => {
+                  setShowOperationDialog(false)
+                  setSelectedProcess("")
+                  setNewOperation({
+                    operationName: "",
+                    description: "",
+                    estimatedTime: 0,
+                    actualTime: 0,
+                    status: "Pending",
+                    assignedTo: "",
+                    priority: "Medium",
+                  })
+                }}>
                   Cancel
                 </Button>
               </div>
